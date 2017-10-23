@@ -14,12 +14,13 @@ from torch.nn import init
 if torch.cuda.is_available():
     use_gpu = True
 
+# Assuming init_type = xavier
 def init_weights(m):
     classname = m.__class__.__name__
     if classname.find('Conv') != -1:
-        init.uniform(m.weight.data, 0.0, 0.02)
+        init.xavier_normal(m.weight.data, gain=1)
     elif classname.find('Linear') != -1:
-        init.uniform(m.weight.data, 0.0, 0.02)
+        init.xavier_normal(m.weight.data, gain=1)
     elif classname.find('BatchNorm2d') != -1:
         init.uniform(m.weight.data, 1.0, 0.02)
         init.constant(m.bias.data, 0.0)
@@ -39,7 +40,8 @@ class Pix2Pix(nn.Module):
         self.input_A = self.Tensor()
         self.input_B = self.Tensor()
 
-        norm_layer = get_norm_layer(norm_type=norm)
+        # Assuming norm_type = batch
+        norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
         self.GeneraterNet = Generator(opt.input_nc, opt.output_nc, 8, opt.ngf, norm_layer=norm_layer,not opt.no_dropout)
         if use_gpu:
             self.GeneraterNet.cuda()
@@ -70,9 +72,11 @@ class Pix2Pix(nn.Module):
             self.discriminator_optimizer = torch.optim.Adam(self.DiscriminatorNet.parameters(), lr=self.learning_rate, betas = (opt.beta1, 0.999))
             self.MyOptimizers.append(self.generator_optimizer)
             self.MyOptimizers.append(self.discriminator_optimizer)
+            def lambda_rule(epoch):
+                lr_l = 1.0 - max(0, epoch - opt.niter)/float(opt.niter_decay+1)
             for optimizer in self.MyOptimizers:
-                self.MySchedulers.append(lr_scheduler.StepLR(optimizer,step_size=opt.lr_decay_iters, gamma=0.1))
-                # assuming opt.lr_policy == 'step'
+                self.MySchedulers.append(lr_scheduler.LambdaLR(optimizer, lr_lambda = lambda_rule))
+                # assuming opt.lr_policy == 'lambda'
 
 
         print('<============ NETWORKS INITIATED ============>')
