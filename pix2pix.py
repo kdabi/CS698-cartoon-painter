@@ -23,12 +23,12 @@ def init_weights(m):
 
 # from .base_model import BaseModel
 class Pix2Pix(nn.Module):
-	def __init__(self, opt):
-		super(Pix2Pix, self).__init__()
-		self.opt = opt
+    def __init__(self, opt):
+        super(Pix2Pix, self).__init__()
+        self.opt = opt
 
-		self.input_A = self.Tensor()
-		self.input_B = self.Tensor()
+        self.input_A = self.Tensor()
+        self.input_B = self.Tensor()
 
                 norm_layer = get_norm_layer(norm_type=norm)
                 self.GeneraterNet = Generator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout= use_dropout)
@@ -38,19 +38,19 @@ class Pix2Pix(nn.Module):
 
 
 
-	def save_network(self, network, network_label, epoch_label):
-		save_path = "./saved_models/%s_net_%s.pth" % (epoch_label, network_label)
-		torch.save(network.cpu().state_dict(), save_path)
-		if torch.cuda.is_available():
-			network.cuda()
+    def save_network(self, network, network_label, epoch_label):
+        save_path = "./saved_models/%s_net_%s.pth" % (epoch_label, network_label)
+        torch.save(network.cpu().state_dict(), save_path)
+        if torch.cuda.is_available():
+            network.cuda()
 
-	def load_network(self, network, network_label, epoch_label):
-		save_path = "./saved_models/%s_net_%s.pth" % (epoch_label, network_label)
-		# torch.save(network.cpu().state_dict(), save_path)
-		network.load_state_dict(torch.load(save_path))
+    def load_network(self, network, network_label, epoch_label):
+        save_path = "./saved_models/%s_net_%s.pth" % (epoch_label, network_label)
+        # torch.save(network.cpu().state_dict(), save_path)
+        network.load_state_dict(torch.load(save_path))
 
-	def update_learning_rate(self):
-		pass
+    def update_learning_rate(self):
+        pass
 
 class Generator(nn.Module):
     def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
@@ -115,7 +115,7 @@ class UnetBlock(nn.Module):
         else :
             return torch.cat([x, self.model(x)], 1)
 
-	
+    
 class Discriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
         super(Discriminator, self).__init__()
@@ -127,20 +127,20 @@ class Discriminator(nn.Module):
 
         factor = 1
         for n in range(1, n_layers):
-        	last = factor
-        	factor = 2**min(n,3)
-        	self.model.add_module("conv_"+str(n), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =2,  padding = 1, use_bias = use_bias))
-        	self.model.add_module("norm_" + str(n), norm_layer(ndf*factor))
-        	self.model.add_module("relu_"+str(n), nn.LeakyRelu(0.2, True))
+            last = factor
+            factor = 2**min(n,3)
+            self.model.add_module("conv_"+str(n), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =2,  padding = 1, use_bias = use_bias))
+            self.model.add_module("norm_" + str(n), norm_layer(ndf*factor))
+            self.model.add_module("relu_"+str(n), nn.LeakyRelu(0.2, True))
 
         last = factor
         factor = 2**min(3,n_layers)
-    	self.model.add_module("conv_"+str(n_layers), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =1,  padding = 1, use_bias = use_bias))
-    	self.model.add_module("norm_" + str(n_layers), norm_layer(ndf*factor))
-    	self.model.add_module("relu_"+str(n_layers), nn.LeakyRelu(0.2, True))
-    	self.model.add_module("conv_"+str(n_layers+1), nn.Conv2d(ndf*factor, 1, kernel_size = 4, stride = 1, padding = 1))
-    	if use_sigmoid:
-    		self.model.add_module("sigmoid", nn.Sigmoid())
+        self.model.add_module("conv_"+str(n_layers), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =1,  padding = 1, use_bias = use_bias))
+        self.model.add_module("norm_" + str(n_layers), norm_layer(ndf*factor))
+        self.model.add_module("relu_"+str(n_layers), nn.LeakyRelu(0.2, True))
+        self.model.add_module("conv_"+str(n_layers+1), nn.Conv2d(ndf*factor, 1, kernel_size = 4, stride = 1, padding = 1))
+        if use_sigmoid:
+            self.model.add_module("sigmoid", nn.Sigmoid())
 
-    	def forward(self, input):
-    		return self.model(input)
+        def forward(self, input):
+            return self.model(input)
