@@ -115,6 +115,32 @@ class UnetBlock(nn.Module):
         return
             return torch.cat([x, self.model(x)], 1)
 
+	
+class Discriminator(nn.Module):
+    def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
+        super(Discriminator, self).__init__()
+        use_bias = norm_layer == nn.InstanceNorm2d
 
+        self.model = nn.Sequential()
+        self.model.add_module("conv_0", nn.Conv2d(input_nc, ndf, kernel_size = 4, stride = 2, padding = 1))
+        self.model.add_module("relu_0", nn.ReLU(0.2, True))
 
+        factor = 1
+        for n in range(1, n_layers):
+        	last = factor
+        	factor = 2**min(n,3)
+        	self.model.add_module("conv_"+str(n), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =2,  padding = 1, use_bias = use_bias))
+        	self.model.add_module("norm_" + str(n), norm_layer(ndf*factor))
+        	self.model.add_module("relu_"+str(n), nn.LeakyRelu(0.2, True))
 
+        last = factor
+        factor = 2**min(3,n_layers)
+    	self.model.add_module("conv_"+str(n_layers), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =1,  padding = 1, use_bias = use_bias))
+    	self.model.add_module("norm_" + str(n_layers), norm_layer(ndf*factor))
+    	self.model.add_module("relu_"+str(n_layers), nn.LeakyRelu(0.2, True))
+    	self.model.add_module("conv_"+str(n_layers+1), nn.Conv2d(ndf*factor, 1, kernel_size = 4, stride = 1, padding = 1))
+    	if use_sigmoid:
+    		self.model.add_module("sigmoid", nn.Sigmoid())
+
+    	def forward(self, input):
+    		return self.model(input)
