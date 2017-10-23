@@ -53,7 +53,7 @@ class Pix2Pix(nn.Module):
 		pass
 
 class Generator(nn.Module):
-    def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False)
+    def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
         super(UnetGenerator, self).__init__()
 
         # constructing the unet generator structure
@@ -110,9 +110,9 @@ class UnetBlock(nn.Module):
         self.model = nn.Sequential(*model)
 
     def forward(self, x):
-        if self.outermost:
+        if self.outermost :
             return self.model(x)
-        return
+        else :
             return torch.cat([x, self.model(x)], 1)
 
 	
