@@ -30,11 +30,11 @@ class Pix2Pix(nn.Module):
         self.input_A = self.Tensor()
         self.input_B = self.Tensor()
 
-                norm_layer = get_norm_layer(norm_type=norm)
-                self.GeneraterNet = Generator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout= use_dropout)
-                if use_gpu:
-                    self.GeneraterNet.cuda()
-                self.GeneraterNet.apply(init_weights)
+        norm_layer = get_norm_layer(norm_type=norm)
+        self.GeneraterNet = Generator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout= use_dropout)
+        if use_gpu:
+            self.GeneraterNet.cuda()
+        self.GeneraterNet.apply(init_weights)
 
 
 
