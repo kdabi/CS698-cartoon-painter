@@ -103,6 +103,8 @@ class Pix2Pix(nn.Module):
     def update_learning_rate(self):
         pass
 
+
+
 class Generator(nn.Module):
     def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
         super(UnetGenerator, self).__init__()
@@ -132,6 +134,14 @@ class UnetBlock(nn.Module):
             input_nc = outer_nc
 
 
+        self.model = nn.Sequential()
+        # self.model.add_module("downconv" , nn.Conv2d(input_nc, inner_nc, kernel_size=4, stride=2, padding=1))
+        # self.model.add_module("downrelu", nn.LeakyReLU(0,2, True))
+        # self.model.add_module("downnorm" ,norm_layer(inner_nc))
+        # self.model.add_module("uprelu", nn.ReLU(True))
+        # self.model.add_module("upnorm", norm_layer(outer_nc))
+
+
         downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=4, stride=2, padding=1)
         downrelu = nn.LeakyReLU(0,2, True)
         downnorm = norm_layer(inner_nc)
@@ -139,6 +149,8 @@ class UnetBlock(nn.Module):
         upnorm = norm_layer(outer_nc)
 
         if outermost:
+            self.model.add_module("downconv_" + str(outer_nc) , nn.Conv2d(input_nc, inner_nc, kernel_size=4, stride=2, padding=1))
+
             upconv = nn.ConvTranspose2d(inner_nc*2, outer_nc, kernel_size=4, stride=2, padding=1)
             down = [downconv]
             up = [uprelu, upconv, nn.Tanh()]
@@ -167,6 +179,10 @@ class UnetBlock(nn.Module):
             return torch.cat([x, self.model(x)], 1)
 
 
+<<<<<<< 02dfe8e8ea82b50d00c8cd4b875a3e3dc8a751ff
+=======
+    
+>>>>>>> Added GANloss class
 class Discriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
         super(Discriminator, self).__init__()
@@ -195,3 +211,33 @@ class Discriminator(nn.Module):
 
         def forward(self, input):
             return self.model(input)
+
+
+class GANLoss(nn.Module):
+    def __init__(self, use_lsgan = True, target_real_label = 1.0, target_fake_label = 0.0, tensor = torch.FloatTensor):
+        super(GANLoss, self).__init__()
+        self.real_label = target_real_label
+        self.fake_label = target_fake_label
+        self.real_label_var = None
+        self.fake_label_var = None
+        self.Tensor = tensor
+        if use_lsgan :
+            self.loss = nn.MSELoss()
+        else :
+            self.loss = nn.BCELoss()
+
+    def __call__(self, input, target_is_real):
+        target_tensor = None
+        if target_is_real:
+            create_label = ((self.real_label_var is None) or (self.real_label_var.numel() != input.numel()))
+            if create_label:
+                real_tensor = self.Tensor(input.size()).fill_(self.real_label)
+                self.real_label_var = Variable(real_tensor, requires_grad = False)
+            target_tensor = self.real_label_var
+        else:
+            create_label = ((self.fake_label_var is None) or (self.fake_label_var.numel() != input.numel()))
+            if create_label:
+                fake_tensor = self.Tensor(input.size()).fill_(self.fake_label)
+                self.fake_label_var = Variable(fake_tensor, requires_grad = False)
+            target_tensor = self.fake_label_var
+        return self.loss(input, target_tensor)
