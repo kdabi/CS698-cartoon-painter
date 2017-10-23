@@ -7,6 +7,9 @@ from torch.autograd import Variable
 import matplotlib.pyplot as plt
 import torch.nn as nn
 import os
+from torch.optim import lr_scheduler
+import functools
+from torch.nn import init
 
 if torch.cuda.is_available():
     use_gpu = True
@@ -21,7 +24,13 @@ def init_weights(m):
         init.uniform(m.weight.data, 1.0, 0.02)
         init.constant(m.bias.data, 0.0)
 
-# from .base_model import BaseModel
+def print_net(net):
+	params =0
+	for param in net.parameters():
+		params += param.numel()
+	print(net)
+	print('Total number of parameters in this network is %d' % params)
+
 class Pix2Pix(nn.Module):
     def __init__(self, opt):
         super(Pix2Pix, self).__init__()
@@ -31,10 +40,48 @@ class Pix2Pix(nn.Module):
         self.input_B = self.Tensor()
 
         norm_layer = get_norm_layer(norm_type=norm)
-        self.GeneraterNet = Generator(input_nc, output_nc, 8, ngf, norm_layer=norm_layer, use_dropout= use_dropout)
+        self.GeneraterNet = Generator(opt.input_nc, opt.output_nc, 8, opt.ngf, norm_layer=norm_layer,not opt.no_dropout)
         if use_gpu:
             self.GeneraterNet.cuda()
         self.GeneraterNet.apply(init_weights)
+
+        if self.isTrain:
+            use_sigmoid = opt.no_lsgan
+            self.DiscriminatorNet = Discriminator(opt.input_nc+ opt.output_nc, opt.ndf, 3, norm_layer, use_sigmoid = use_sigmoid)
+            if use_gpu:
+                self.DiscriminatorNet.cuda()
+            self.DiscriminatorNet.apply(init_weights)
+
+        if not self.isTrain or opt.continue_train:
+            self.load_network(self.GeneraterNet, 'Generater', opt.which_epoch)
+            if self.isTrain:
+                self.load_network(self.DiscriminatorNet, 'Discriminator', opt.which_epoch)
+
+        if self.isTrain:
+            self.fake_AB_pool = ImagePool(opt.pool_size)
+            self.learning_rate = opt.lr
+            # defining loss functions
+            self.criterionGAN = GANLoss(use_lsgan = not opt.no_lsgan, tensor=self.Tensor)
+            self.criterianL1 = torch.nn.L1Loss()
+
+            self.MySchedulers = []  # initialising schedulers
+            self.MyOptimizers = []  # initialising optimizers
+            self.generater_optimizer = torch.optim.Adam(self.GeneraterNet.parameters(), lr=self.learning_rate, betas = (opt.beta1, 0.999))
+            self.discriminator_optimizer = torch.optim.Adam(self.DiscriminatorNet.parameters(), lr=self.learning_rate, betas = (opt.beta1, 0.999))
+            self.MyOptimizers.append(self.generator_optimizer)
+            self.MyOptimizers.append(self.discriminator_optimizer)
+            for optimizer in self.MyOptimizers:
+                self.MySchedulers.append(lr_scheduler.StepLR(optimizer,step_size=opt.lr_decay_iters, gamma=0.1))
+                # assuming opt.lr_policy == 'step'
+
+
+        print('<============ NETWORKS INITIATED ============>')
+        print_net(self.GeneraterNet)
+        if self.isTrain:
+            print_net(self.DiscriminatorNet)
+        print('<=============================================>')
+
+
 
 
 
@@ -115,7 +162,7 @@ class UnetBlock(nn.Module):
         else :
             return torch.cat([x, self.model(x)], 1)
 
-    
+
 class Discriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
         super(Discriminator, self).__init__()
