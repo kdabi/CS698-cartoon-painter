@@ -37,25 +37,27 @@ class Pix2Pix(nn.Module):
         super(Pix2Pix, self).__init__()
         self.opt = opt
 
-        self.input_A = self.Tensor()
-        self.input_B = self.Tensor()
+        self.input_A = self.Tensor(opt.BatchSize, opt.input_nc, opt.fineSize, opt.fineSize)
+        self.input_B = self.Tensor(opt.BatchSize, opt.ouput_nc, opt.fineSize, opt.fineSize)
 
         # Assuming norm_type = batch
         norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
-        self.GeneraterNet = Generator(opt.input_nc, opt.output_nc, 8, opt.ngf, norm_layer=norm_layer,not opt.no_dropout)
+        # model  of Generator Net is unet_256
+        self.GeneratorNet = Generator(opt.input_nc, opt.output_nc, 8, opt.ngf, norm_layer=norm_layer,use_dropout = not opt.no_dropout)
         if use_gpu:
-            self.GeneraterNet.cuda()
-        self.GeneraterNet.apply(init_weights)
+            self.GeneratorNet.cuda()
+        self.GeneratorNet.apply(init_weights)
 
         if self.isTrain:
             use_sigmoid = opt.no_lsgan
-            self.DiscriminatorNet = Discriminator(opt.input_nc+ opt.output_nc, opt.ndf, 3, norm_layer, use_sigmoid = use_sigmoid)
+            # model  of Discriminator Net is basic
+            self.DiscriminatorNet = Discriminator(opt.input_nc+ opt.output_nc, opt.ndf, n_layers = 3, norm_layer = norm_layer, use_sigmoid = use_sigmoid)
             if use_gpu:
                 self.DiscriminatorNet.cuda()
             self.DiscriminatorNet.apply(init_weights)
 
         if not self.isTrain or opt.continue_train:
-            self.load_network(self.GeneraterNet, 'Generater', opt.which_epoch)
+            self.load_network(self.GeneratorNet, 'Generator', opt.which_epoch)
             if self.isTrain:
                 self.load_network(self.DiscriminatorNet, 'Discriminator', opt.which_epoch)
 
@@ -64,11 +66,11 @@ class Pix2Pix(nn.Module):
             self.learning_rate = opt.lr
             # defining loss functions
             self.criterionGAN = GANLoss(use_lsgan = not opt.no_lsgan, tensor=self.Tensor)
-            self.criterianL1 = torch.nn.L1Loss()
+            self.criterionL1 = torch.nn.L1Loss()
 
             self.MySchedulers = []  # initialising schedulers
             self.MyOptimizers = []  # initialising optimizers
-            self.generater_optimizer = torch.optim.Adam(self.GeneraterNet.parameters(), lr=self.learning_rate, betas = (opt.beta1, 0.999))
+            self.generator_optimizer = torch.optim.Adam(self.GeneratorNet.parameters(), lr=self.learning_rate, betas = (opt.beta1, 0.999))
             self.discriminator_optimizer = torch.optim.Adam(self.DiscriminatorNet.parameters(), lr=self.learning_rate, betas = (opt.beta1, 0.999))
             self.MyOptimizers.append(self.generator_optimizer)
             self.MyOptimizers.append(self.discriminator_optimizer)
@@ -80,13 +82,10 @@ class Pix2Pix(nn.Module):
 
 
         print('<============ NETWORKS INITIATED ============>')
-        print_net(self.GeneraterNet)
+        print_net(self.GeneratorNet)
         if self.isTrain:
             print_net(self.DiscriminatorNet)
         print('<=============================================>')
-
-
-
 
 
     def save_network(self, network, network_label, epoch_label):
@@ -101,7 +100,82 @@ class Pix2Pix(nn.Module):
         network.load_state_dict(torch.load(save_path))
 
     def update_learning_rate(self):
-        pass
+        for scheduler in self.MySchedulers:
+            scheduler.step()
+        lr = self.MyOptimizers[0].param_groups[0]['lr']
+        print('learning rate = %.7f' % lr)
+
+    def set_input(self, input):
+        self.input = input
+        if self.opt.which_direction == 'AtoB':
+            input_A = input['A']
+            input_B = input['B']
+            self.image_paths = input['A_paths']
+        else:
+            input_A = input['B']
+            input_B = input['A']
+            self.image_paths = input['B_paths']
+        self.input_A.resize_(input_A.size()).copy_(input_A)
+        self.input_B.resize_(input_B.size()).copy_(input_B)
+
+    def forward(self):
+        self.real_A = Variable(self.input_A, volatile=True)
+        self.generated_B = self.GeneratorNet.forward(self.real_A)
+        self.real_B = Variable(self.input_B, volatile=True)
+
+    def get_image_paths(self):
+        return self.image_paths
+
+    def backward_Discriminator(self):
+        fake_AB = self.fake_AB_pool.query(torch.cat((self.real_A, self.generated_B), 1))
+        self.prediction_fake = self.DiscriminatorNet.forward(fake_AB.detach())
+        self.loss_D_fake = self.criterionGAN(self.prediction_fake, False)
+
+        real_AB = torch.cat((self.real_A, self.real_B), 1)
+        self.prediction_real = self.DiscriminatorNet.forward(real_AB)
+        self.loss_D_real = self.criterionGAN(self.prediction_real, False)
+
+        self.loss_Discriminator = (self.loss_D_fake+ self.loss_D_real)*0.5
+        self.loss_Discriminator.backward()
+
+    def backward_Generator(self):
+
+        fake_AB = torch.cat((self.real_A, self.generated_B), 1)
+        prediction_fake = self.DiscriminatorNet.forward(fake_AB)
+        self.loss_G_GAN = self.criterionGAN(prediction_fake, True)
+
+        self.loss_G_L1 = self.criterionL1(self.generated_B, self.real_B)*self.opt.lambda_A
+
+        self.loss_Generator = self.loss_G_GAN + self.loss_G_L1
+        self.loss_Generator.backward()
+
+    def optimize_paramters(self):
+        self.forward()
+
+        self.discriminator_optimizer.zero_grad()
+        self.backward_Discriminator()
+        self.discriminator_optimizer.step()
+
+        self.generator_optimizer.zero_grad()
+        self.backward_Generator()
+        self.generator_optimizer.step()
+
+    def get_current_errors(self):
+        return OrderedDict([('G_GAN', self.loss_G_GAN.data[0]),
+            ('G_L1', self.loss_G_L1.data[0]),
+            ('D_real', self.loss_D_real.data[0]),
+            ('D_fake', self.loss_D_fake.data[0])
+            ])
+
+    def get_current_visuals(self):
+        real_A = util.tensor2im(self.real_A.data)
+        fake_B = util.tensor2im(self.generated_B.data)
+        real_B = util.tensor2im(self.real_B.data)
+
+    def save(self, label):
+        self.save_network(self.GeneratorNet, 'Generator', label)
+        self.save_network(self.DiscriminatorNet, 'Discriminator', label)
+
 
 
 
@@ -179,10 +253,6 @@ class UnetBlock(nn.Module):
             return torch.cat([x, self.model(x)], 1)
 
 
-<<<<<<< 02dfe8e8ea82b50d00c8cd4b875a3e3dc8a751ff
-=======
-    
->>>>>>> Added GANloss class
 class Discriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
         super(Discriminator, self).__init__()
