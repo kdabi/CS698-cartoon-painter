@@ -7,6 +7,10 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+Dataset_Generator/minions
+Dataset_Generator/minionSketch
+Dataset_Generator/minions_output
+
 .Python
 env/
 build/
