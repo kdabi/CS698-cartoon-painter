@@ -36,6 +36,8 @@ class Pix2Pix(nn.Module):
     def __init__(self, opt):
         super(Pix2Pix, self).__init__()
         self.opt = opt
+        self.isTrain = opt.isTrain
+        self.Tensor = torch.cuda.FloatTensor if use_gpu else torch.Tensor
 
         self.input_A = self.Tensor(opt.BatchSize, opt.input_nc, opt.fineSize, opt.fineSize)
         self.input_B = self.Tensor(opt.BatchSize, opt.ouput_nc, opt.fineSize, opt.fineSize)
