@@ -7,7 +7,7 @@ import os
 import torch.nn as nn
 from torch.nn import init
 import numpy as np
-from . import pix2pix
+import pix2pix
 
 
 if torch.cuda.is_available():
@@ -56,7 +56,7 @@ class TestModel(nn.Module):
         save_path = "./saved_models/%s_net_%s.pth" % (epoch_label,        network_label)
         torch.save(network.cpu().state_dict(), save_path)
         if torch.cuda.is_available():
-        network.cuda()
+            network.cuda()
 
     def load_network(self, network, network_label, epoch_label):
         save_path = "./saved_models/%s_net_%s.pth" % (epoch_label,        network_label)

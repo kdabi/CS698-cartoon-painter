@@ -4,15 +4,18 @@ import torch
 import torch.utils.data
 import torchvision.transforms as transforms
 from torch.autograd import Variable
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import torch.nn as nn
 import os
 from torch.optim import lr_scheduler
 import functools
 from torch.nn import init
+from image_pool import ImagePool
 
 if torch.cuda.is_available():
     use_gpu = True
+else:
+    use_gpu = False
 
 # Assuming init_type = xavier
 def init_weights(m):
@@ -39,8 +42,8 @@ class Pix2Pix(nn.Module):
         self.isTrain = opt.isTrain
         self.Tensor = torch.cuda.FloatTensor if use_gpu else torch.Tensor
 
-        self.input_A = self.Tensor(opt.BatchSize, opt.input_nc, opt.fineSize, opt.fineSize)
-        self.input_B = self.Tensor(opt.BatchSize, opt.ouput_nc, opt.fineSize, opt.fineSize)
+        self.input_A = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
+        self.input_B = self.Tensor(opt.batchSize, opt.output_nc, opt.fineSize, opt.fineSize)
 
         # Assuming norm_type = batch
         norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
@@ -78,6 +81,7 @@ class Pix2Pix(nn.Module):
             self.MyOptimizers.append(self.discriminator_optimizer)
             def lambda_rule(epoch):
                 lr_l = 1.0 - max(0, epoch - opt.niter)/float(opt.niter_decay+1)
+                return lr_l
             for optimizer in self.MyOptimizers:
                 self.MySchedulers.append(lr_scheduler.LambdaLR(optimizer, lr_lambda = lambda_rule))
                 # assuming opt.lr_policy == 'lambda'
@@ -121,14 +125,15 @@ class Pix2Pix(nn.Module):
         self.input_B.resize_(input_B.size()).copy_(input_B)
 
     def forward(self):
-        self.real_A = Variable(self.input_A, volatile=True)
+        self.real_A = Variable(self.input_A)
         self.generated_B = self.GeneratorNet.forward(self.real_A)
-        self.real_B = Variable(self.input_B, volatile=True)
+        self.real_B = Variable(self.input_B)
 
     def get_image_paths(self):
         return self.image_paths
 
     def backward_Discriminator(self):
+        # fake_AB = self.fake_AB_pool.query(torch.cat((self.real_A, self.generated_B), 1))
         fake_AB = self.fake_AB_pool.query(torch.cat((self.real_A, self.generated_B), 1))
         self.prediction_fake = self.DiscriminatorNet.forward(fake_AB.detach())
         self.loss_D_fake = self.criterionGAN(self.prediction_fake, False)
@@ -151,7 +156,7 @@ class Pix2Pix(nn.Module):
         self.loss_Generator = self.loss_G_GAN + self.loss_G_L1
         self.loss_Generator.backward()
 
-    def optimize_paramters(self):
+    def optimize_parameters(self):
         self.forward()
 
         self.discriminator_optimizer.zero_grad()
@@ -183,12 +188,12 @@ class Pix2Pix(nn.Module):
 
 class Generator(nn.Module):
     def __init__(self, input_nc, output_nc, num_downs, ngf=64, norm_layer=nn.BatchNorm2d, use_dropout=False):
-        super(UnetGenerator, self).__init__()
+        super(Generator, self).__init__()
 
         # constructing the unet generator structure
         generator_block = UnetBlock(ngf*8, ngf*8, input_nc=None, submodule=None, norm_layer=norm_layer, innermost=True)
-        for i in range(num_down -5):
-            generator_block = UnetBlock(ngf*8, ngf*8, input_nc=None, submodule=generator_block, norm_layer=norm_layer, use_drop=use_dropout)
+        for i in range(num_downs -5):
+            generator_block = UnetBlock(ngf*8, ngf*8, input_nc=None, submodule=generator_block, norm_layer=norm_layer, use_dropout=use_dropout)
 
         generator_block = UnetBlock(ngf*4, ngf*8, input_nc=None,submodule=generator_block, norm_layer=norm_layer)
         generator_block = UnetBlock(ngf*2, ngf*4, input_nc=None,submodule=generator_block, norm_layer=norm_layer)
@@ -219,7 +224,7 @@ class UnetBlock(nn.Module):
 
 
         downconv = nn.Conv2d(input_nc, inner_nc, kernel_size=4, stride=2, padding=1)
-        downrelu = nn.LeakyReLU(0,2, True)
+        downrelu = nn.LeakyReLU(0.2, True)
         downnorm = norm_layer(inner_nc)
         uprelu = nn.ReLU(True)
         upnorm = norm_layer(outer_nc)
@@ -258,31 +263,32 @@ class UnetBlock(nn.Module):
 class Discriminator(nn.Module):
     def __init__(self, input_nc, ndf=64, n_layers=3, norm_layer=nn.BatchNorm2d, use_sigmoid=False):
         super(Discriminator, self).__init__()
+        print("[here: ]Discriminator initialized")
         use_bias = norm_layer == nn.InstanceNorm2d
 
         self.model = nn.Sequential()
         self.model.add_module("conv_0", nn.Conv2d(input_nc, ndf, kernel_size = 4, stride = 2, padding = 1))
-        self.model.add_module("relu_0", nn.ReLU(0.2, True))
+        self.model.add_module("relu_0", nn.LeakyReLU(0.2, True))
 
         factor = 1
         for n in range(1, n_layers):
             last = factor
             factor = 2**min(n,3)
-            self.model.add_module("conv_"+str(n), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =2,  padding = 1, use_bias = use_bias))
+            self.model.add_module("conv_"+str(n), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =2,  padding = 1, bias = use_bias))
             self.model.add_module("norm_" + str(n), norm_layer(ndf*factor))
-            self.model.add_module("relu_"+str(n), nn.LeakyRelu(0.2, True))
+            self.model.add_module("relu_"+str(n), nn.LeakyReLU(0.2, True))
 
         last = factor
         factor = 2**min(3,n_layers)
-        self.model.add_module("conv_"+str(n_layers), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =1,  padding = 1, use_bias = use_bias))
+        self.model.add_module("conv_"+str(n_layers), nn.Conv2d(ndf*last, ndf*factor, kernel_size = 4, stride =1,  padding = 1, bias = use_bias))
         self.model.add_module("norm_" + str(n_layers), norm_layer(ndf*factor))
-        self.model.add_module("relu_"+str(n_layers), nn.LeakyRelu(0.2, True))
+        self.model.add_module("relu_"+str(n_layers), nn.LeakyReLU(0.2, True))
         self.model.add_module("conv_"+str(n_layers+1), nn.Conv2d(ndf*factor, 1, kernel_size = 4, stride = 1, padding = 1))
         if use_sigmoid:
             self.model.add_module("sigmoid", nn.Sigmoid())
 
-        def forward(self, input):
-            return self.model(input)
+    def forward(self, input):
+        return self.model(input)
 
 
 class GANLoss(nn.Module):
