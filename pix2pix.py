@@ -11,6 +11,8 @@ from torch.optim import lr_scheduler
 import functools
 from torch.nn import init
 from image_pool import ImagePool
+import util.util as util
+from collections import OrderedDict
 
 if torch.cuda.is_available():
     use_gpu = True
@@ -178,6 +180,7 @@ class Pix2Pix(nn.Module):
         real_A = util.tensor2im(self.real_A.data)
         fake_B = util.tensor2im(self.generated_B.data)
         real_B = util.tensor2im(self.real_B.data)
+        return OrderedDict([('real_A', real_A), ('fake_B', fake_B), ('real_B', real_B)])
 
     def save(self, label):
         self.save_network(self.GeneratorNet, 'Generator', label)

@@ -12,6 +12,9 @@ import pix2pix
 
 if torch.cuda.is_available():
     use_gpu = True
+else:
+    use_gpu = False
+
 
 # Assuming init_type = xavier
 def init_weights(m):
@@ -35,6 +38,7 @@ class TestModel(nn.Module):
         self.Tensor = torch.cuda.FloatTensor if use_gpu else torch.Tensor
 
         self.input_A = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
+        self.input_B = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
 
 
 	# Assuming norm_type = batch
@@ -70,12 +74,15 @@ class TestModel(nn.Module):
         print('learning rate = %.7f' % lr)
 
     def set_input(self,input):
-        input_A = input['A']
+        input_A = input['B']
+        input_B = input['A']
         self.input_A.resize_(input_A.size()).copy_(input_A)
+        self.input_B.resize_(input_B.size()).copy_(input_B)
         self.image_paths = input['A_paths']
 
     def test(self):
         self.real_A = Variable(self.input_A)
+        self.real_B = Variable(self.input_B)
         self.generated_B = self.GeneratorNet.forward(self.real_A)
 
     def get_image_paths(self):
@@ -84,4 +91,5 @@ class TestModel(nn.Module):
     def get_current_visuals(self):
         real_A = util.tensor2im(self.real_A.data)
         fake_B = util.tensor2im(self.generated_B.data)
-        return OrderedDict([('real_A', real_A), ('fake_B', fake_B)])
+        real_B = util.tensor2im(self.real_B.data)
+        return OrderedDict([('real_A', real_A), ('fake_B', fake_B), ('real_B', real_B) ])

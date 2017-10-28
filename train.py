@@ -1,9 +1,11 @@
 import time
 import math
 from pix2pix import Pix2Pix
+from util.visualizer import Visualizer
 
 # from options.train_options import TrainOptions
-from data.data_loader import CreateDataLoader
+from data.custom_dataset_data_loader import CustomDatasetDataLoader
+
 # from models.models import create_model
 # from util.visualizer import Visualizer
 
@@ -13,7 +15,7 @@ class Options():
         self.batchSize =  1
         self.beta1 =  0.5
         self.continue_train =  False
-        self.dataroot =  "/data/anil/datasets/facades"
+        self.dataroot =  "/data/kdabi/CS698O/Autopainter/CS698-cartoon-painter/Dataset_Generator"
         self.display_freq =  100
         self.display_id =  1
         self.display_port =  8097
@@ -52,18 +54,24 @@ class Options():
         self.serial_batches =  False
         self.which_direction =  "BtoA"
         self.which_epoch =  "latest"
+        self.checkpoints_dir = "/data/kdabi/CS698O/Autopainter/CS698-cartoon-painter/saved_models"
+        self.results_dir = "/data/kdabi/CS698O/Autopainter/CS698-cartoon-painter/saved_models"
+
 
 opt = Options()
 
 
 # opt = TrainOptions().parse()
-data_loader = CreateDataLoader(opt)
+
+
+data_loader = CustomDatasetDataLoader()
+data_loader.initialize(opt)
 dataset = data_loader.load_data()
-# dataset_size = len(data_loader)
+dataset_size = len(data_loader)
 # print('#training images = %d' % dataset_size)
 
 model = Pix2Pix(opt)
-# visualizer = Visualizer(opt)
+visualizer = Visualizer(opt)
 total_steps = 0
 
 for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
@@ -77,17 +85,15 @@ for epoch in range(opt.epoch_count, opt.niter + opt.niter_decay + 1):
         model.set_input(data)
         model.optimize_parameters()
 
-        # if total_steps % opt.display_freq == 0:
-        #     visualizer.display_current_results(model.get_current_visuals(), epoch)
+        if total_steps % opt.display_freq == 0:
+            visualizer.display_current_results(model.get_current_visuals(), epoch)
 
-        # if total_steps % opt.print_freq == 0:
-        #     errors = model.get_current_errors()
-        #     t = (time.time() - iter_start_time) / opt.batchSize
-            # visualizer.print_current_errors(epoch, epoch_iter, errors, t)
-            # if opt.display_id > 0:
-            #     visualizer.plot_current_errors(epoch, float(epoch_iter)/dataset_size, opt, errors)
-        # print('epoch %d, total_steps %d' %
-        #           (epoch, total_steps))
+        if total_steps % opt.print_freq == 0:
+            errors = model.get_current_errors()
+            t = (time.time() - iter_start_time) / opt.batchSize
+            visualizer.print_current_errors(epoch, epoch_iter, errors, t)
+            if opt.display_id > 0:
+                visualizer.plot_current_errors(epoch, float(epoch_iter)/dataset_size, opt, errors)
 
         if total_steps % opt.save_latest_freq == 0:
             print('saving the latest model (epoch %d, total_steps %d)' %
