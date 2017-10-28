@@ -8,6 +8,9 @@ __pycache__/
 
 # Distribution / packaging
 Dataset_Generator/minions
+Dataset_Generator/test
+Dataset_Generator/train
+Dataset_Generator/val
 Dataset_Generator/minionSketch
 Dataset_Generator/minions_output
 
