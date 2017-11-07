@@ -1,6 +1,6 @@
 import time
 import math
-from pix2pix import Pix2Pix
+from featureloss import FeatureLoss
 from util.visualizer import Visualizer
 
 # from options.train_options import TrainOptions
@@ -27,15 +27,15 @@ class Options():
         self.input_nc =  3
         self.isTrain =  True
         self.lambda_A =  100.0
-        self.lambda_B =  10.0
+        self.lambda_B =  0.01
         self.loadSize =  286
         self.lr =  0.0002
         self.lr_decay_iters =  50
         self.max_dataset_size =  10000000
-        self.model =  "pix2pix"
+        self.model =  "featureloss"
         self.nThreads =  2
         self.n_layers_D =  3
-        self.name =  "facades_pix2pix"
+        self.name =  "facades_featureloss"
         self.ndf =  64
         self.ngf =  64
         self.niter =  100
@@ -70,7 +70,7 @@ dataset = data_loader.load_data()
 dataset_size = len(data_loader)
 # print('#training images = %d' % dataset_size)
 
-model = Pix2Pix(opt)
+model = FeatureLoss(opt)
 visualizer = Visualizer(opt)
 total_steps = 0
 

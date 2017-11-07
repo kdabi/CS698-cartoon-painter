@@ -8,10 +8,14 @@ import torch.nn as nn
 from torch.nn import init
 import numpy as np
 import pix2pix
+import featureloss
 
 
 if torch.cuda.is_available():
     use_gpu = True
+else:
+    use_gpu = False
+
 
 # Assuming init_type = xavier
 def init_weights(m):
@@ -35,14 +39,15 @@ class TestModel(nn.Module):
         self.Tensor = torch.cuda.FloatTensor if use_gpu else torch.Tensor
 
         self.input_A = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
+        self.input_B = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
 
 
 	# Assuming norm_type = batch
         norm_layer = functools.partial(nn.BatchNorm2d, affine=True)
         # model  of Generator Net is unet_256
-        self.GeneratorNet = pix2pix.Generator(opt.input_nc, opt.output_nc, 8, opt.ngf, norm_layer=norm_layer,use_dropout = not opt.no_dropout)
+        self.GeneratorNet = featureloss.Generator(opt.input_nc, opt.output_nc, 8, opt.ngf, norm_layer=norm_layer,use_dropout = not opt.no_dropout)
         if use_gpu:
-             self.GeneratorNet.cuda()
+             self.GeneratorNet.cuda(0)
         self.GeneratorNet.apply(init_weights)
 
         which_epoch = opt.which_epoch
@@ -56,7 +61,7 @@ class TestModel(nn.Module):
         save_path = "./saved_models/%s_net_%s.pth" % (epoch_label,        network_label)
         torch.save(network.cpu().state_dict(), save_path)
         if torch.cuda.is_available():
-            network.cuda()
+            network.cuda(0)
 
     def load_network(self, network, network_label, epoch_label):
         save_path = "./saved_models/%s_net_%s.pth" % (epoch_label,        network_label)
@@ -70,12 +75,15 @@ class TestModel(nn.Module):
         print('learning rate = %.7f' % lr)
 
     def set_input(self,input):
-        input_A = input['A']
+        input_A = input['B']
+        input_B = input['A']
         self.input_A.resize_(input_A.size()).copy_(input_A)
+        self.input_B.resize_(input_B.size()).copy_(input_B)
         self.image_paths = input['A_paths']
 
     def test(self):
         self.real_A = Variable(self.input_A)
+        self.real_B = Variable(self.input_B)
         self.generated_B = self.GeneratorNet.forward(self.real_A)
 
     def get_image_paths(self):
@@ -84,4 +92,5 @@ class TestModel(nn.Module):
     def get_current_visuals(self):
         real_A = util.tensor2im(self.real_A.data)
         fake_B = util.tensor2im(self.generated_B.data)
-        return OrderedDict([('real_A', real_A), ('fake_B', fake_B)])
+        real_B = util.tensor2im(self.real_B.data)
+        return OrderedDict([('real_A', real_A), ('fake_B', fake_B), ('real_B', real_B) ])

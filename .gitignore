@@ -7,11 +7,15 @@ __pycache__/
 *.so
 
 # Distribution / packaging
+saved_models/
+trained_model/
+trained_model1/
 Dataset_Generator/minions
 Dataset_Generator/test
 Dataset_Generator/train
 Dataset_Generator/val
 Dataset_Generator/minionSketch
+Dataset_Generator/minionSketches
 Dataset_Generator/minions_output
 
 .Python

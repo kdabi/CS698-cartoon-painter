@@ -12,7 +12,9 @@ import functools
 from torch.nn import init
 from image_pool import ImagePool
 import util.util as util
+import models.vgg as VGG
 from collections import OrderedDict
+import loss_FV
 
 if torch.cuda.is_available():
     use_gpu = True
@@ -37,11 +39,12 @@ def print_net(net):
 	print(net)
 	print('Total number of parameters in this network is %d' % params)
 
-class Pix2Pix(nn.Module):
+class FeatureLoss(nn.Module):
     def __init__(self, opt):
-        super(Pix2Pix, self).__init__()
+        super(FeatureLoss, self).__init__()
         self.opt = opt
         self.isTrain = opt.isTrain
+        self.vgg = VGG.vgg16(pretrained = True)
         self.Tensor = torch.cuda.FloatTensor if use_gpu else torch.Tensor
 
         self.input_A = self.Tensor(opt.batchSize, opt.input_nc, opt.fineSize, opt.fineSize)
@@ -52,7 +55,7 @@ class Pix2Pix(nn.Module):
         # model  of Generator Net is unet_256
         self.GeneratorNet = Generator(opt.input_nc, opt.output_nc, 8, opt.ngf, norm_layer=norm_layer,use_dropout = not opt.no_dropout)
         if use_gpu:
-            self.GeneratorNet.cuda()
+            self.GeneratorNet.cuda(0)
         self.GeneratorNet.apply(init_weights)
 
         if self.isTrain:
@@ -60,7 +63,7 @@ class Pix2Pix(nn.Module):
             # model  of Discriminator Net is basic
             self.DiscriminatorNet = Discriminator(opt.input_nc+ opt.output_nc, opt.ndf, n_layers = 3, norm_layer = norm_layer, use_sigmoid = use_sigmoid)
             if use_gpu:
-                self.DiscriminatorNet.cuda()
+                self.DiscriminatorNet.cuda(0)
             self.DiscriminatorNet.apply(init_weights)
 
         if not self.isTrain or opt.continue_train:
@@ -74,6 +77,7 @@ class Pix2Pix(nn.Module):
             # defining loss functions
             self.criterionGAN = GANLoss(use_lsgan = not opt.no_lsgan, tensor=self.Tensor)
             self.criterionL1 = torch.nn.L1Loss()
+            self.criterionFV = loss_FV.FeatureVectorLoss()
 
             self.MySchedulers = []  # initialising schedulers
             self.MyOptimizers = []  # initialising optimizers
@@ -100,7 +104,7 @@ class Pix2Pix(nn.Module):
         save_path = "./saved_models/%s_net_%s.pth" % (epoch_label, network_label)
         torch.save(network.cpu().state_dict(), save_path)
         if torch.cuda.is_available():
-            network.cuda()
+            network.cuda(0)
 
     def load_network(self, network, network_label, epoch_label):
         save_path = "./saved_models/%s_net_%s.pth" % (epoch_label, network_label)
@@ -152,10 +156,11 @@ class Pix2Pix(nn.Module):
         fake_AB = torch.cat((self.real_A, self.generated_B), 1)
         prediction_fake = self.DiscriminatorNet.forward(fake_AB)
         self.loss_G_GAN = self.criterionGAN(prediction_fake, True)
+        self.loss_G_FV = self.criterionFV(self.generated_B, self.real_B)
 
         self.loss_G_L1 = self.criterionL1(self.generated_B, self.real_B)*self.opt.lambda_A
 
-        self.loss_Generator = self.loss_G_GAN + self.loss_G_L1
+        self.loss_Generator = self.loss_G_GAN + self.loss_G_L1 + self.loss_G_FV*self.opt.lambda_B
         self.loss_Generator.backward()
 
     def optimize_parameters(self):
@@ -172,6 +177,7 @@ class Pix2Pix(nn.Module):
     def get_current_errors(self):
         return OrderedDict([('G_GAN', self.loss_G_GAN.data[0]),
             ('G_L1', self.loss_G_L1.data[0]),
+            ('G_FV', self.loss_G_FV.data[0]),
             ('D_real', self.loss_D_real.data[0]),
             ('D_fake', self.loss_D_fake.data[0])
             ])
@@ -322,3 +328,4 @@ class GANLoss(nn.Module):
                 self.fake_label_var = Variable(fake_tensor, requires_grad = False)
             target_tensor = self.fake_label_var
         return self.loss(input, target_tensor)
+
