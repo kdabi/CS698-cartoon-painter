@@ -13,6 +13,7 @@ from torch.nn import init
 from image_pool import ImagePool
 import util.util as util
 from collections import OrderedDict
+import TVLoss
 
 if torch.cuda.is_available():
     use_gpu = True
@@ -37,9 +38,9 @@ def print_net(net):
 	print(net)
 	print('Total number of parameters in this network is %d' % params)
 
-class Pix2Pix(nn.Module):
+class TotalVarianceLoss(nn.Module):
     def __init__(self, opt):
-        super(Pix2Pix, self).__init__()
+        super(TotalVarianceLoss, self).__init__()
         self.opt = opt
         self.isTrain = opt.isTrain
         self.Tensor = torch.cuda.FloatTensor if use_gpu else torch.Tensor
@@ -74,6 +75,7 @@ class Pix2Pix(nn.Module):
             # defining loss functions
             self.criterionGAN = GANLoss(use_lsgan = not opt.no_lsgan, tensor=self.Tensor)
             self.criterionL1 = torch.nn.L1Loss()
+            self.criterionTV = TVLoss.TVL()
 
             self.MySchedulers = []  # initialising schedulers
             self.MyOptimizers = []  # initialising optimizers
@@ -154,8 +156,9 @@ class Pix2Pix(nn.Module):
         self.loss_G_GAN = self.criterionGAN(prediction_fake, True)
 
         self.loss_G_L1 = self.criterionL1(self.generated_B, self.real_B)*self.opt.lambda_A
+        self.loss_G_TV = self.criterionTV(self.generated_B)*self.opt.lambda_C
 
-        self.loss_Generator = self.loss_G_GAN + self.loss_G_L1
+        self.loss_Generator = self.loss_G_GAN + self.loss_G_L1 + self.loss_G_TV
         self.loss_Generator.backward()
 
     def optimize_parameters(self):
@@ -172,6 +175,7 @@ class Pix2Pix(nn.Module):
     def get_current_errors(self):
         return OrderedDict([('G_GAN', self.loss_G_GAN.data[0]),
             ('G_L1', self.loss_G_L1.data[0]),
+            ('G_TV', self.loss_G_TV.data[0]),
             ('D_real', self.loss_D_real.data[0]),
             ('D_fake', self.loss_D_fake.data[0])
             ])

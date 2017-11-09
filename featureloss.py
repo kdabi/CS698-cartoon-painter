@@ -103,7 +103,7 @@ class FeatureLoss(nn.Module):
     def save_network(self, network, network_label, epoch_label):
         save_path = "./saved_models/%s_net_%s.pth" % (epoch_label, network_label)
         torch.save(network.cpu().state_dict(), save_path)
-        if torch.cuda.is_available():
+        if use_gpu:
             network.cuda(0)
 
     def load_network(self, network, network_label, epoch_label):
